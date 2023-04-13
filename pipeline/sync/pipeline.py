@@ -104,10 +104,19 @@ class Pipeline:
         It modifies the given batches in place.
 
         """
+
+        # [DEBUG][YH]
+        import time
+        run_start = time.time()
+        print("============================= run() ==============================")	# [DEBUG][YH] added.
+        print("device:",torch.cuda.current_device())
+        print("run_start:",run_start)
+        # [DEBUG][YH].
+
         partitions = self.partitions
         devices = self.devices
         skip_layout = self.skip_layout
-        print("============================= run() ==============================")	# [DEBUG][YH] added.
+
         m = len(batches)
         n = len(partitions)
 
@@ -116,6 +125,13 @@ class Pipeline:
         for schedule in _clock_cycles(m, n):
             self.fence(batches, schedule, skip_trackers)
             self.compute(batches, schedule, skip_trackers)
+
+        # [DEBUG][YH]
+        run_end = time.time()
+        print("device:",torch.cuda.current_device())
+        print("run_end:",run_end)
+        print("run_duration:",run_end - run_start)
+        # [DEBUG][YH]
 
     def fence(
         self, batches: List[Batch], schedule: List[Tuple[int, int]], skip_trackers: List[SkipTrackerThroughPotals],
@@ -146,11 +162,20 @@ class Pipeline:
         self, batches: List[Batch], schedule: List[Tuple[int, int]], skip_trackers: List[SkipTrackerThroughPotals],
     ) -> None:
         """Runs tasks with synchronization to copy streams."""
+
+        # [DEBUG][YH]
+        import time
+        compute_start = time.time()
+        print("------------------------------------ compute() --------------------------------------")	# [DEBUG][YH] added.
+        print("device:",torch.cuda.current_device())
+        print("compute_start:",compute_start)
+        print("self.devices:",self.devices)
+        # [DEBUG][YH].
+
         partitions = self.partitions
         devices = self.devices
         copy_streams = self.copy_streams
         checkpoint_stop = self.checkpoint_stop
-        print ("------------------------------------ compute() --------------------------------------")	# [DEBUG][YH] added.
         # Disable checkpointing if in eval mode.
         if not self.partitions[0].training:
             checkpoint_stop = 0
@@ -256,3 +281,10 @@ class Pipeline:
         # Fail at the first exception.
         if exc_info is not None:
             raise exc_info[0].with_traceback(exc_info[1], exc_info[2])
+
+        # [DEBUG][YH]
+        compute_end = time.time()
+        print("device:",torch.cuda.current_device())
+        print("compute_end:",compute_end)
+        print("compute_duration:",compute_end - compute_start)
+        # [DEBUG][YH]
