@@ -96,7 +96,7 @@ class Pipeline:
         self.copy_streams = copy_streams
         self.skip_layout = skip_layout
         self.checkpoint_stop = checkpoint_stop
-        (self.in_queues, self.out_queues) = create_workers(devices)
+        (self.in_queues, self.out_queues) = create_workers(devices) #쓰레드 만듦
 
     def run(self, batches: List[Batch]) -> None:
         """Runs pipeline parallelism.
@@ -228,9 +228,10 @@ class Pipeline:
                     chunk_id: int = i,
                     part_id: int = j,
                 ) -> TensorOrTensors:
+                    #print('yckim debug : if-checkpoint-part-above-with, use device {}'.format(torch.cuda.current_device()))
                     with use_skip_tracker(skip_tracker), record_function("chunk%d-part%d" % (chunk_id, part_id)):
                         return partition(*inputs)
-
+                #print('yckim debug : if-checkpoint-part, use device {}'.format(torch.cuda.current_device()))
                 chk = Checkpointing(function, batch)  # type: ignore[arg-type]
                 task = Task(streams[j], compute=chk.checkpoint, finalize=chk.recompute)
                 del function, chk
@@ -246,15 +247,15 @@ class Pipeline:
                 ) -> Batch:
                     with use_skip_tracker(skip_tracker), record_function("chunk%d-part%d" % (chunk_id, part_id)):
                         return batch.call(partition)
-
+                #print('yckim debug : else-part use device {}'.format(torch.cuda.current_device()))
                 task = Task(streams[j], compute=compute, finalize=None)
                 del compute
 
             # Compute tasks in parallel. ([2] in the diagram)
-            self.in_queues[j].put(task)
+            self.in_queues[j].put(task)#start task!
 
         for i, j in schedule:
-            ok, payload = self.out_queues[j].get()
+            ok, payload = self.out_queues[j].get() # end of task
 
             # Hold the first exception.
             if exc_info is not None:
@@ -264,6 +265,9 @@ class Pipeline:
                 continue
 
             task, batch = cast(Tuple[Task, Batch], payload)
+            print("yckim debug : (i,j)=({},{}), task and batch are following:".format(i, j))
+            print(task)
+            print(batch)
 
             # The copy stream synchronizes to copy the output. ([3] in the
             # diagram)
@@ -274,6 +278,7 @@ class Pipeline:
             # recomputation is scheduled at backpropagation. ([4] in the
             # diagram)
             with use_device(devices[j]):
+                print('yckim debug : with, use device {}'.format(torch.cuda.current_device()))
                 task.finalize(batch)
 
             batches[i] = batch

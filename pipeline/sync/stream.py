@@ -52,6 +52,7 @@ def default_stream(device: torch.device) -> AbstractStream:
 @contextmanager
 def use_device(device: torch.device) -> Generator[None, None, None]:
     """:func:`torch.cuda.device` for either CPU or CUDA device."""
+    print('yckim debug: stream' ,device)
     if device.type != "cuda":
         yield
         return
