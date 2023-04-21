@@ -67,7 +67,7 @@ class Task:
 
 
 def worker(in_queue: InQueue, out_queue: OutQueue, device: torch.device) -> None:
-    """The main loop of a worker thread."""
+    """The main loop of a worker thread."""     # [YH]  actual GPU handling entrance.
     with use_device(device):
         while True:
             task = in_queue.get()

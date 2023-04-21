@@ -101,9 +101,9 @@ class Checkpointing:
         # Use a phony which requires grad to ensure that Checkpoint can be
         # tracked by the autograd engine even when none of the input tensors
         # require grad.
-        phony = get_phony(self.batch.get_device(), requires_grad=True)
+        phony = get_phony(self.batch.get_device(), requires_grad=True)      # [YH] !! recompute시 gradient 어디부터?
 
-        output = Checkpoint.apply(phony, self.recomputed, self.rng_states, self.function, input_atomic, *inputs)
+        output = Checkpoint.apply(phony, self.recomputed, self.rng_states, self.function, input_atomic, *inputs)    # [YH] forward.
 
         # Gradients are only supported for float Tensors.
         if isinstance(output, tuple):

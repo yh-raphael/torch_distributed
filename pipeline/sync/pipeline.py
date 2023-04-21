@@ -123,8 +123,8 @@ class Pipeline:
         skip_trackers = [SkipTrackerThroughPotals(skip_layout) for _ in batches]
 
         for schedule in _clock_cycles(m, n):
-            self.fence(batches, schedule, skip_trackers)
-            self.compute(batches, schedule, skip_trackers)
+            self.fence(batches, schedule, skip_trackers)        # [YH] copy: unblocking
+            self.compute(batches, schedule, skip_trackers)      # [YH] wait: synch
 
         # [DEBUG][YH]
         run_end = time.time()
@@ -215,13 +215,13 @@ class Pipeline:
 
             # Synchronize with the copied input. ([1] in the diagram)
             if j != 0:
-                _wait(batch, copy_streams[j][i], streams[j])
+                _wait(batch, copy_streams[j][i], streams[j])        # [YH] barrier
 
             # Determine whether checkpointing or not.
             checkpoint = i < checkpoint_stop
             if checkpoint:
 
-                def function(
+                def function(       # [YH] function registered.
                     *inputs,
                     partition: nn.Module = partition,
                     skip_tracker: SkipTrackerThroughPotals = skip_trackers[i],
@@ -255,7 +255,7 @@ class Pipeline:
             self.in_queues[j].put(task)#start task!
 
         for i, j in schedule:
-            ok, payload = self.out_queues[j].get() # end of task
+            ok, payload = self.out_queues[j].get() # end of task    # [YH] 결과를 받아오는 line. e.g.(True, (Task, Batch))
 
             # Hold the first exception.
             if exc_info is not None:
@@ -266,13 +266,13 @@ class Pipeline:
 
             task, batch = cast(Tuple[Task, Batch], payload)
             print("yckim debug : (i,j)=({},{}), task and batch are following:".format(i, j))
-            print(task)
-            print(batch)
+            #print(task)
+            #print(batch)
 
             # The copy stream synchronizes to copy the output. ([3] in the
             # diagram)
             if j != n - 1:
-                _wait(batch, streams[j], copy_streams[j][i])
+                _wait(batch, streams[j], copy_streams[j][i])    # [YH] (batch, src, dst), (실제 작업중인 stream, 진열대 stream element)
 
             # Finalize tasks. If checkpointing is enabled, here the
             # recomputation is scheduled at backpropagation. ([4] in the
