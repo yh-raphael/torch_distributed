@@ -96,7 +96,7 @@ class Pipeline:
         self.copy_streams = copy_streams
         self.skip_layout = skip_layout
         self.checkpoint_stop = checkpoint_stop
-        (self.in_queues, self.out_queues) = create_workers(devices) #쓰레드 만듦
+        (self.in_queues, self.out_queues) = create_workers(devices)
 
     def run(self, batches: List[Batch]) -> None:
         """Runs pipeline parallelism.
@@ -104,15 +104,6 @@ class Pipeline:
         It modifies the given batches in place.
 
         """
-
-        # [DEBUG][YH]
-        import time
-        run_start = time.time()
-        print("============================= run() ==============================")	# [DEBUG][YH] added.
-        print("device:",torch.cuda.current_device())
-        print("run_start:",run_start)
-        # [DEBUG][YH].
-
         partitions = self.partitions
         devices = self.devices
         skip_layout = self.skip_layout
@@ -123,15 +114,8 @@ class Pipeline:
         skip_trackers = [SkipTrackerThroughPotals(skip_layout) for _ in batches]
 
         for schedule in _clock_cycles(m, n):
-            self.fence(batches, schedule, skip_trackers)        # [YH] copy: unblocking
-            self.compute(batches, schedule, skip_trackers)      # [YH] wait: synch
-
-        # [DEBUG][YH]
-        run_end = time.time()
-        print("device:",torch.cuda.current_device())
-        print("run_end:",run_end)
-        print("run_duration:",run_end - run_start)
-        # [DEBUG][YH]
+            self.fence(batches, schedule, skip_trackers)
+            self.compute(batches, schedule, skip_trackers)
 
     def fence(
         self, batches: List[Batch], schedule: List[Tuple[int, int]], skip_trackers: List[SkipTrackerThroughPotals],
@@ -162,20 +146,11 @@ class Pipeline:
         self, batches: List[Batch], schedule: List[Tuple[int, int]], skip_trackers: List[SkipTrackerThroughPotals],
     ) -> None:
         """Runs tasks with synchronization to copy streams."""
-
-        # [DEBUG][YH]
-        import time
-        compute_start = time.time()
-        print("------------------------------------ compute() --------------------------------------")	# [DEBUG][YH] added.
-        print("device:",torch.cuda.current_device())
-        print("compute_start:",compute_start)
-        print("self.devices:",self.devices)
-        # [DEBUG][YH].
-
         partitions = self.partitions
         devices = self.devices
         copy_streams = self.copy_streams
         checkpoint_stop = self.checkpoint_stop
+
         # Disable checkpointing if in eval mode.
         if not self.partitions[0].training:
             checkpoint_stop = 0
@@ -215,23 +190,22 @@ class Pipeline:
 
             # Synchronize with the copied input. ([1] in the diagram)
             if j != 0:
-                _wait(batch, copy_streams[j][i], streams[j])        # [YH] barrier
+                _wait(batch, copy_streams[j][i], streams[j])
 
             # Determine whether checkpointing or not.
             checkpoint = i < checkpoint_stop
             if checkpoint:
 
-                def function(       # [YH] function registered.
+                def function(
                     *inputs,
                     partition: nn.Module = partition,
                     skip_tracker: SkipTrackerThroughPotals = skip_trackers[i],
                     chunk_id: int = i,
                     part_id: int = j,
                 ) -> TensorOrTensors:
-                    #print('yckim debug : if-checkpoint-part-above-with, use device {}'.format(torch.cuda.current_device()))
                     with use_skip_tracker(skip_tracker), record_function("chunk%d-part%d" % (chunk_id, part_id)):
                         return partition(*inputs)
-                #print('yckim debug : if-checkpoint-part, use device {}'.format(torch.cuda.current_device()))
+
                 chk = Checkpointing(function, batch)  # type: ignore[arg-type]
                 task = Task(streams[j], compute=chk.checkpoint, finalize=chk.recompute)
                 del function, chk
@@ -247,15 +221,15 @@ class Pipeline:
                 ) -> Batch:
                     with use_skip_tracker(skip_tracker), record_function("chunk%d-part%d" % (chunk_id, part_id)):
                         return batch.call(partition)
-                #print('yckim debug : else-part use device {}'.format(torch.cuda.current_device()))
+
                 task = Task(streams[j], compute=compute, finalize=None)
                 del compute
 
             # Compute tasks in parallel. ([2] in the diagram)
-            self.in_queues[j].put(task)#start task!
+            self.in_queues[j].put(task)
 
         for i, j in schedule:
-            ok, payload = self.out_queues[j].get() # end of task    # [YH] 결과를 받아오는 line. e.g.(True, (Task, Batch))
+            ok, payload = self.out_queues[j].get()
 
             # Hold the first exception.
             if exc_info is not None:
@@ -265,20 +239,16 @@ class Pipeline:
                 continue
 
             task, batch = cast(Tuple[Task, Batch], payload)
-            print("yckim debug : (i,j)=({},{}), task and batch are following:".format(i, j))
-            #print(task)
-            #print(batch)
 
             # The copy stream synchronizes to copy the output. ([3] in the
             # diagram)
             if j != n - 1:
-                _wait(batch, streams[j], copy_streams[j][i])    # [YH] (batch, src, dst), (실제 작업중인 stream, 진열대 stream element)
+                _wait(batch, streams[j], copy_streams[j][i])
 
             # Finalize tasks. If checkpointing is enabled, here the
             # recomputation is scheduled at backpropagation. ([4] in the
             # diagram)
             with use_device(devices[j]):
-                print('yckim debug : with, use device {}'.format(torch.cuda.current_device()))
                 task.finalize(batch)
 
             batches[i] = batch
@@ -286,10 +256,3 @@ class Pipeline:
         # Fail at the first exception.
         if exc_info is not None:
             raise exc_info[0].with_traceback(exc_info[1], exc_info[2])
-
-        # [DEBUG][YH]
-        compute_end = time.time()
-        print("device:",torch.cuda.current_device())
-        print("compute_end:",compute_end)
-        print("compute_duration:",compute_end - compute_start)
-        # [DEBUG][YH]

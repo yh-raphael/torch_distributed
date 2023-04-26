@@ -322,7 +322,7 @@ class Pipe(Module):
 
         chunks = int(chunks)
         checkpoint = str(checkpoint)
-        print ("-------------------------- Pipe class __init__() -------------------------")	# [DEBUG][YH] added.
+
         if chunks <= 0:
             raise ValueError("number of chunks must be positive integer")
         if checkpoint not in ["always", "except_last", "never"]:
@@ -472,16 +472,9 @@ class Pipe(Module):
             TypeError: input doesn't contain at least one tensor
 
         """
-        # [DEBUG][YH]
-        import time
-        forward_start = time.time ()
-        print("device:",torch.cuda.current_device())
-        print("forward_start:",forward_start)
-        # [DEBUG][YH].
-
         first_partition_device = self.devices[0] if len(self.devices) != 0 else torch.device("cpu")
         microbatch.check(first_partition_device, *inputs)
-        print ("========================= Pipe class forward() ===============================")	# [DEBUG][YH] added.
+
         if not self.devices:
             # Empty sequential module is not illegal.
             return RRef(*inputs)
@@ -494,12 +487,4 @@ class Pipe(Module):
 
         # Merge the micro-batches into one mini-batch.
         output = microbatch.gather(batches)
-
-        # [DEBUG][YH]
-        forward_end = time.time ()
-        print("device:",torch.cuda.current_device())
-        print("forward_end:",forward_end)
-        print("forward_duration:",forward_end - forward_start)
-        # [DEBUG][YH].
-
         return RRef(output)

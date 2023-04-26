@@ -159,7 +159,6 @@ def use_skip_tracker(skip_tracker: SkipTracker) -> Generator[None, None, None]:
             ...
 
     """
-    print('yckim debug : in tracker debugging...')
     orig = thread_local.skip_tracker
 
     thread_local.skip_tracker = skip_tracker
@@ -167,8 +166,6 @@ def use_skip_tracker(skip_tracker: SkipTracker) -> Generator[None, None, None]:
     try:
         yield
     finally:
-        print('yckim debug : orig = {}'.format(orig))
-        print('yckim debug : thread number = {}'.format(threading.get_ident()))
         thread_local.skip_tracker = orig
 
 
